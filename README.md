@@ -15,10 +15,12 @@ Photos proxy api for unsplash.com
 
 `.env`
 
-- TTL_CASH=30 # in minutes
-- URL_API=https://api.unsplash.com/photos
-- PER_PAGE=10
-- TOKEN_API=...
+```
+TTL_CASH=30 # in minutes
+URL_API=https://api.unsplash.com/photos
+PER_PAGE=10 # start per page
+TOKEN_API=...
+```
 
 # Deployment
 
