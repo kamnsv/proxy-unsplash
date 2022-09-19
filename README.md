@@ -11,6 +11,14 @@ Photos proxy api for unsplash.com
 * uvicorn
 * aiohttp
 
+# Environments
+
+`.env`
+
+- TTL_CASH=30 # in minutes
+- URL_API=https://api.unsplash.com/photos
+- PER_PAGE=10
+- TOKEN_API=...
 
 # Deployment
 
