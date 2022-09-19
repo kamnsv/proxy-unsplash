@@ -10,13 +10,12 @@ class ProxyUnsplash:
     _url = os.getenv('URL_API') # template with page number (paginator) API
     _per = int(os.getenv('PER_PAGE'))# count photos per page
     _token = os.getenv('TOKEN_API')
-    
+    _headers = {}
     
     
     def __init__(self, limit, offset):
         self._limit = limit
         self._offset = offset
-        self._headers = {}
         
         
         
