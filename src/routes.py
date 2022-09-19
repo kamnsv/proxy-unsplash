@@ -10,8 +10,9 @@ def set_routes(app):
                      limit : int = Query(0, ge=0), 
                      offset : int = Query(0, ge=0)):
         
-        result = await ProxyUnsplash(limit, offset).get_photos()
-        resp.headers["X-total"] = str(len(result))
+        proxy_unspalash = ProxyUnsplash(limit, offset)
+        result = await proxy_unspalash.get_photos()
+        resp.headers["X-Total"] = proxy_unspalash.headers('X-Total')
         return result
 
 
