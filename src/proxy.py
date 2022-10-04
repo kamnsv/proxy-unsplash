@@ -1,105 +1,106 @@
-from models import Photo
-import os
+from .models import Photo, Settings
 from datetime import datetime
 import aiohttp
+import asyncio
 
-class ProxyUnsplash:
 
-    _cash = {} # index: (date_load, Photo)
-    _ttl = int(os.getenv('TTL_CASH')) * 60 # seconds
-    _url = os.getenv('URL_API') # template with page number (paginator) API
-    _per = int(os.getenv('PER_PAGE'))# count photos per page
-    _token = os.getenv('TOKEN_API')
-    _headers = {}
+class ProxyPage:
+    cfg = Settings()
+    pages = {}  # index_page: (datetime, page)
+    headers = {}  # header data from unsplash
+    per = cfg.per  # per_page
+    token = cfg.token
+    ttl = int(cfg.ttl) * 60
+    debug = cfg.debug
+    url = cfg.url
     
-    
-    def __init__(self, limit, offset):
-        self._limit = limit
-        self._offset = offset
+    async def get_photos(self, limit, offset):
+
+        per = self.per
+        page_numbers = await get_page_numbers(limit, offset, per)
+        await self.get_pages(page_numbers)
+        return await self.get_items(limit, offset, per, page_numbers)
+
+    async def get_items(self, limit, offset, per, page_numbers):
+
+        items = []
+        a = page_numbers[0]
+        count = 0
         
-        
-        
-    async def get_photos(self): 
-        return [i async for i in self]
+        for i in page_numbers:
+            page = self.pages.get(i)
+            if not page: continue
+            for j, item in enumerate(page[1]):
+                
+                # first page
+                if (a == i and offset % per > j): 
+                        continue
+                        
+                items.append(item)
+                
+                count += 1
+                if count == limit:
+                    break
+                    
+        return items
 
+    async def get_pages(self, page_numbers: list):
+        await asyncio.gather(
+            *[self.load_page(i) for i in page_numbers]
+        )
 
+    async def load_page(self, n):
+        if self.ttl \
+                and n in self.pages \
+                and (datetime.now() - self.pages[n][0]).seconds < self.ttl:
+            return self.pages[n][1]
 
-    def __aiter__(self):
-        self.__count = -1
-        return self
-
-
-
-    async def __anext__(self):
-        self.__count += 1
-        if self.__count < self._limit:
-            return await self.get_photo(self._offset + self.__count)
-        else:
-            raise StopAsyncIteration
-         
-
-         
-    async def get_photo(self, index):
-
-        if index not in self._cash:
-            await self.call_api(index)
-        
-        if index not in self._cash: 
-            raise StopAsyncIteration
-            
-        if (datetime.now() - self._cash[index][0]).seconds >= self._ttl:
-            await self.call_api(index)    
-        
-            
-        return self._cash[index][1]
-        
-    
-    
-    async def call_api(self, index):
-        # which page index
-        page = index // self._per + 1
         params = {
             'order_by': 'popular',
-            'page': page,
-            'client_id': self._token
+            'page': n,
+            'client_id': self.token
         }
-        
-        # get json data from url
-        data = await self.query_url(params)
-        if type(data) != list:
-            print('API unsplash return', data)
-            raise StopAsyncIteration
-            
-        per = len(data)
-        
-        # set cash photos
-        try:
-            for i, item in enumerate(data):
-                j = (page - 1)*per + i
-                photo = {
-                    'id': item['id'],
-                    'description': item['description'] or '',
-                    'image': item['urls']['regular']
-                }
-                self._cash.update({j: (datetime.now(), Photo(**photo)) })
-        except Exception as e:
-            print('call_api', e)
-         
 
-         
+        data = await self.query_url(params)
+        if type(data) != list: return
+
+        page = []
+        for item in data:
+            photo = {
+                'id': item['id'],
+                'description': item['description'] or '',
+                'image': item['urls']['regular']
+            }
+            page.append(Photo(**photo))
+
+        self.pages.update({n: (datetime.now(), page)})
+
     async def query_url(self, params):
-        #data = [{'id': f'test_id_{i}', 'description': 'test_desc', 'urls': {'regular': 'test_url'}} for i in range(self._per-1)]
+        if self.debug:
+            n = params['page']
+            return [{'id': f'test_id_{n}_{i+1}', 'description': 'test_desc', 'urls': {'regular': 'test_url'}} for i in
+                    range(self.per)]
         try:
             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-                async with session.get(self._url, params=params) as resp:
+                async with session.get(self.url, params=params) as resp:
                     data = await resp.json()
-                    self._headers = dict(resp.headers)
-                    self._per = int(self.headers('X-Per-Page', self._per))
+                    await self.set_headers(resp.headers)
             return data
         except Exception as e:
             print('query_url:', e)
 
+    async def set_headers(self, resp_header):
+        self.headers = dict(resp_header)
+        self.per = await self.get_headers('X-Per-Page', self.per)
 
+    async def get_headers(self, key, default=''):
+        return self.headers.get(key, default)
 
-    def headers(self, key, default=''):
-        return self._headers.get(key, default)
+    async def get_total_cache(self):
+        return sum([len(self.pages[i][1]) for i in self.pages])
+
+async def get_page_numbers(limit, offset, per):
+    a = offset // per
+    b = (offset + limit) // per
+    b += (offset + limit) % per > 0
+    return [i+1 for i in range(a, b)]
