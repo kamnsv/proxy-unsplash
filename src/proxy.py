@@ -13,55 +13,59 @@ class ProxyPage:
     ttl = int(cfg.ttl) * 60
     debug = cfg.debug
     url = cfg.url
-    
-    async def get_photos(self, limit, offset):
 
-        per = self.per
+    @classmethod
+    async def get_photos(cls, limit, offset):
+
+        per = int(cls.per)
         page_numbers = await get_page_numbers(limit, offset, per)
-        await self.get_pages(page_numbers)
-        return await self.get_items(limit, offset, per, page_numbers)
+        await cls.get_pages(page_numbers)
+        return await cls.get_items(limit, offset, per, page_numbers)
 
-    async def get_items(self, limit, offset, per, page_numbers):
+    @classmethod
+    async def get_items(cls, limit, offset, per, page_numbers):
 
         items = []
         a = page_numbers[0]
         count = 0
-        
+
         for i in page_numbers:
-            page = self.pages.get(i)
+            page = cls.pages.get(i)
             if not page: continue
             for j, item in enumerate(page[1]):
-                
+
                 # first page
-                if (a == i and offset % per > j): 
-                        continue
-                        
+                if (a == i and offset % per > j):
+                    continue
+
                 items.append(item)
-                
+
                 count += 1
                 if count == limit:
                     break
-                    
+
         return items
 
-    async def get_pages(self, page_numbers: list):
+    @classmethod
+    async def get_pages(cls, page_numbers: list):
         await asyncio.gather(
-            *[self.load_page(i) for i in page_numbers]
+            *[cls.load_page(i) for i in page_numbers]
         )
 
-    async def load_page(self, n):
-        if self.ttl \
-                and n in self.pages \
-                and (datetime.now() - self.pages[n][0]).seconds < self.ttl:
-            return self.pages[n][1]
+    @classmethod
+    async def load_page(cls, n):
+        if cls.ttl \
+                and n in cls.pages \
+                and (datetime.now() - cls.pages[n][0]).seconds < cls.ttl:
+            return cls.pages[n][1]
 
         params = {
             'order_by': 'popular',
             'page': n,
-            'client_id': self.token
+            'client_id': cls.token
         }
 
-        data = await self.query_url(params)
+        data = await cls.query_url(params)
         if type(data) != list: return
 
         page = []
@@ -73,34 +77,39 @@ class ProxyPage:
             }
             page.append(Photo(**photo))
 
-        self.pages.update({n: (datetime.now(), page)})
+        cls.pages.update({n: (datetime.now(), page)})
 
-    async def query_url(self, params):
-        if self.debug:
+    @classmethod
+    async def query_url(cls, params):
+        if cls.debug:
             n = params['page']
-            return [{'id': f'test_id_{n}_{i+1}', 'description': 'test_desc', 'urls': {'regular': 'test_url'}} for i in
-                    range(self.per)]
+            return [{'id': f'test_id_{n}_{i + 1}', 'description': 'test_desc', 'urls': {'regular': 'test_url'}} for i in
+                    range(cls.per)]
         try:
             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
-                async with session.get(self.url, params=params) as resp:
+                async with session.get(cls.url, params=params) as resp:
                     data = await resp.json()
-                    await self.set_headers(resp.headers)
+                    await cls.set_headers(resp.headers)
             return data
         except Exception as e:
             print('query_url:', e)
 
-    async def set_headers(self, resp_header):
-        self.headers = dict(resp_header)
-        self.per = await self.get_headers('X-Per-Page', self.per)
+    @classmethod
+    async def set_headers(cls, resp_header):
+        cls.headers = dict(resp_header)
+        cls.per = await cls.get_headers('X-Per-Page', cls.per)
 
-    async def get_headers(self, key, default=''):
-        return self.headers.get(key, default)
+    @classmethod
+    async def get_headers(cls, key, default=''):
+        return cls.headers.get(key, default)
 
-    async def get_total_cache(self):
-        return sum([len(self.pages[i][1]) for i in self.pages])
+    @classmethod
+    async def get_total_cache(cls):
+        return sum([len(cls.pages[i][1]) for i in cls.pages])
+
 
 async def get_page_numbers(limit, offset, per):
     a = offset // per
     b = (offset + limit) // per
     b += (offset + limit) % per > 0
-    return [i+1 for i in range(a, b)]
+    return [i + 1 for i in range(a, b)]
